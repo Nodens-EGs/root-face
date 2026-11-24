@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Robot face</title>
+<style>
+  :root {
+    --bg: #fff;
+    --fg: #111;
+    --sub: #666;
+    --bar-bg: rgba(235, 235, 235, 0.95);
+    --bar-h: 64px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    width: 100%; height: 100dvh; overflow: hidden;
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    user-select: none; -webkit-user-select: none;
+  }
+  #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  #face { width: min(90vw, 90dvh); height: min(90vw, 90dvh); }
+  #face svg { width: 100%; height: 100%; }
+
+  .blink { animation: blink 4s infinite; transform-origin: center; transform-box: fill-box; }
+  @keyframes blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(0.1); } }
+
+  /* 眠いのz：左下→右上に移動しながら拡大。3つを1/3周期ずつずらし、各zは周期の80%だけ表示 → 常に2〜3個 */
+  .zz {
+    opacity: 0; font-weight: 600;
+    transform-origin: 0 0;
+    animation: zz 3s linear infinite;
+  }
+  .zz:nth-of-type(2) { animation-delay: -1s; }
+  .zz:nth-of-type(3) { animation-delay: -2s; }
+  @keyframes zz {
+    0%   { opacity: 0; transform: translate(0, 0) scale(0.4); }
+    5%   { opacity: 0.8; }
+    75%  { opacity: 0.8; }
+    80%  { opacity: 0; transform: translate(22px, -26px) scale(1); }
+    100% { opacity: 0; transform: translate(22px, -26px) scale(1); }
+  }
+
+  /* 収納式バー */
+  #bar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--bar-bg);
+    transition: transform 0.25s ease;
+  }
+  #bar.closed { transform: translateY(100%); }
+  #buttons { display: flex; height: var(--bar-h); }
+  #buttons button {
+    flex: 1; border: none; background: transparent; color: var(--fg);
+    font-size: 15px; font-family: inherit;
+  }
+  #buttons button.active { background: rgba(0, 0, 0, 0.1); }
+  #handle {
+    position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%);
+    width: 72px; height: 28px; border: none; border-radius: 10px 10px 0 0;
+    background: var(--bar-bg); color: var(--sub); font-size: 14px;
+  }
+
+  /* バーを上部に置く場合 */
+  body.bar-top #bar { top: 0; bottom: auto; padding-bottom: 0; padding-top: env(safe-area-inset-top); }
+  body.bar-top #bar.closed { transform: translateY(-100%); }
+  body.bar-top #handle { top: 100%; bottom: auto; border-radius: 0 0 10px 10px; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="face"></div></div>
+
+<div id="bar">
+  <button id="handle" aria-label="バーの開閉">▼</button>
+  <div id="buttons"></div>
+</div>
+
+<script>
+  // バーの位置: "bottom" または "top"
+  const BAR_POSITION = "bottom";
+
+  const S = 'fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"';
+  const F = 'fill="currentColor" stroke="none"';
+  const FACES = {
+    normal: { label: "通常", svg:
+      `<svg viewBox="0 0 100 100" ${S}>
+        <ellipse class="blink" cx="32" cy="42" rx="7" ry="10" ${F}/>
+        <ellipse class="blink" cx="68" cy="42" rx="7" ry="10" ${F}/>
+        <path d="M38 70 Q50 74 62 70"/></svg>` },
+    joy: { label: "喜び", svg:
+      `<svg viewBox="0 0 100 100" ${S}>
+        <path d="M24 45 Q32 34 40 45"/><path d="M60 45 Q68 34 76 45"/>
+        <path d="M34 64 Q50 82 66 64"/></svg>` },
+    surprise: { label: "驚き", svg:
+      `<svg viewBox="0 0 100 100" ${S}>
+        <circle cx="32" cy="40" r="11"/><circle cx="68" cy="40" r="11"/>
+        <circle cx="32" cy="40" r="4" ${F}/><circle cx="68" cy="40" r="4" ${F}/>
+        <ellipse cx="50" cy="72" rx="6" ry="8"/></svg>` },
+    sad: { label: "悲しみ", svg:
+      `<svg viewBox="0 0 100 100" ${S}>
+        <path d="M22 34 L40 40"/><path d="M78 34 L60 40"/>
+        <ellipse cx="32" cy="48" rx="6" ry="7" ${F}/><ellipse cx="68" cy="48" rx="6" ry="7" ${F}/>
+        <path d="M38 74 Q50 66 62 74"/></svg>` },
+    sleepy: { label: "眠い", svg:
+      `<svg viewBox="0 0 100 100" ${S}>
+        <path d="M24 44 L40 44"/><path d="M60 44 L76 44"/><path d="M44 70 L56 70"/>
+        <g transform="translate(68 32)">
+          <text class="zz" x="0" y="0" font-size="16" text-anchor="middle" dominant-baseline="central" ${F}>z</text>
+          <text class="zz" x="0" y="0" font-size="16" text-anchor="middle" dominant-baseline="central" ${F}>z</text>
+          <text class="zz" x="0" y="0" font-size="16" text-anchor="middle" dominant-baseline="central" ${F}>z</text>
+        </g></svg>` },
+  };
+
+  const face = document.getElementById("face");
+  const buttons = document.getElementById("buttons");
+  const bar = document.getElementById("bar");
+  const handle = document.getElementById("handle");
+  const isTop = BAR_POSITION === "top";
+  if (isTop) document.body.classList.add("bar-top");
+
+  function setFace(key) {
+    face.innerHTML = FACES[key].svg;
+    for (const b of buttons.children) b.classList.toggle("active", b.dataset.key === key);
+  }
+
+  for (const [key, f] of Object.entries(FACES)) {
+    const b = document.createElement("button");
+    b.textContent = f.label;
+    b.dataset.key = key;
+    b.addEventListener("click", () => setFace(key));
+    buttons.appendChild(b);
+  }
+
+  function updateHandle() {
+    const closed = bar.classList.contains("closed");
+    handle.textContent = (closed !== isTop) ? "▲" : "▼";
+  }
+  handle.addEventListener("click", () => { bar.classList.toggle("closed"); updateHandle(); });
+
+  setFace("normal");
+  updateHandle();
+</script>
+</body>
+</html>
